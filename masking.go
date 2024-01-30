@@ -31,7 +31,7 @@ func SetMaskedStr(s string) {
 
 type Option func() []jsoniter.Extension
 
-func Masking(typ any, fields ...string) Option {
+func IgnoreFields(typ any, fields ...string) Option {
 	return func() []jsoniter.Extension {
 		es := []jsoniter.Extension{}
 		for _, f := range fields {
