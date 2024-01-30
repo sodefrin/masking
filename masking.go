@@ -35,7 +35,7 @@ func IgnoreFields(typ any, fields ...string) Option {
 	return func() []jsoniter.Extension {
 		es := []jsoniter.Extension{}
 		for _, f := range fields {
-			if e := newMaskingExtension(typ, f, defaultMaskingStr); e != nil {
+			if e := newIgnoreFieldsExtension(typ, f, defaultMaskingStr); e != nil {
 				es = append(es, e)
 			}
 		}
@@ -59,26 +59,26 @@ func (encoder *funcEncoder) IsEmpty(ptr unsafe.Pointer) bool {
 	return encoder.isEmptyFunc(ptr)
 }
 
-func newMaskingExtension(typ interface{}, field, maskedStr string) *maskingExtension {
+func newIgnoreFieldsExtension(typ interface{}, field, maskedStr string) *ignoreFieldsExtension {
 	t := reflect.TypeOf(typ)
 	if t == nil || t.Kind() != reflect.Struct {
 		return nil
 	}
-	return &maskingExtension{
+	return &ignoreFieldsExtension{
 		typ:       t.String(),
 		field:     field,
 		maskedStr: maskedStr,
 	}
 }
 
-type maskingExtension struct {
+type ignoreFieldsExtension struct {
 	jsoniter.DummyExtension
 	typ       string
 	field     string
 	maskedStr string
 }
 
-func (m *maskingExtension) UpdateStructDescriptor(structDescriptor *jsoniter.StructDescriptor) {
+func (m *ignoreFieldsExtension) UpdateStructDescriptor(structDescriptor *jsoniter.StructDescriptor) {
 	if structDescriptor.Type.String() != m.typ {
 		return
 	}
