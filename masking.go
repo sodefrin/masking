@@ -8,7 +8,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-var defaultMaskingStr = ""
+var defaultMaskedStr = ""
 
 func MarshalJSON(in any, opts ...Option) ([]byte, error) {
 	cfg := jsoniter.Config{}.Froze()
@@ -26,7 +26,7 @@ func SetMaskedStr(s string) {
 	mu := sync.Mutex{}
 	mu.Lock()
 	defer mu.Unlock()
-	defaultMaskingStr = s
+	defaultMaskedStr = s
 }
 
 type Option func() []jsoniter.Extension
@@ -35,7 +35,7 @@ func IgnoreFields(typ any, fields ...string) Option {
 	return func() []jsoniter.Extension {
 		es := []jsoniter.Extension{}
 		for _, f := range fields {
-			if e := newIgnoreFieldsExtension(typ, f, defaultMaskingStr); e != nil {
+			if e := newIgnoreFieldsExtension(typ, f, defaultMaskedStr); e != nil {
 				es = append(es, e)
 			}
 		}
