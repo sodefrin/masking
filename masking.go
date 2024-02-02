@@ -6,20 +6,13 @@ import (
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/sodefrin/masking/internal/json"
 )
 
 var defaultMaskedStr = ""
 
 func MarshalJSON(in any, opts ...Option) ([]byte, error) {
-	cfg := jsoniter.Config{}.Froze()
-
-	for _, o := range opts {
-		for _, e := range o() {
-			cfg.RegisterExtension(e)
-		}
-	}
-
-	return cfg.Marshal(in)
+	return json.Marshal(in)
 }
 
 func SetMaskedStr(s string) {
