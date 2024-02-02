@@ -155,11 +155,20 @@ import (
 // JSON cannot represent cyclic data structures and Marshal does not
 // handle them. Passing cyclic structures to Marshal will result in
 // an error.
-func Marshal(v any, opts ...Option) ([]byte, error) {
+func Marshal(v any, opts ...MarshalOption) ([]byte, error) {
 	e := newEncodeState()
 	defer encodeStatePool.Put(e)
 
-	err := e.marshal(v, encOpts{escapeHTML: true}, opts...)
+	o := encOpts{escapeHTML: true}
+	var err error
+	for _, opt := range opts {
+		o, err = opt(o)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = e.marshal(v, o)
 	if err != nil {
 		return nil, err
 	}
@@ -168,13 +177,11 @@ func Marshal(v any, opts ...Option) ([]byte, error) {
 	return buf, nil
 }
 
-type Option func()
-
 // MarshalIndent is like Marshal but applies Indent to format the output.
 // Each JSON element in the output will begin on a new line beginning with prefix
 // followed by one or more copies of indent according to the indentation nesting.
-func MarshalIndent(v any, prefix, indent string) ([]byte, error) {
-	b, err := Marshal(v)
+func MarshalIndent(v any, prefix, indent string, opts ...MarshalOption) ([]byte, error) {
+	b, err := Marshal(v, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +191,53 @@ func MarshalIndent(v any, prefix, indent string) ([]byte, error) {
 		return nil, err
 	}
 	return b2, nil
+}
+
+type MarshalOption func(encOpts) (encOpts, error)
+
+func WithFilterString(s string) MarshalOption {
+	return func(o encOpts) (encOpts, error) {
+		o.filterString = s
+		return o, nil
+	}
+}
+
+func WithTagFilter(tagKey, tagValue string) MarshalOption {
+	return func(o encOpts) (encOpts, error) {
+		o.tagFilterFunc = func(tag reflect.StructTag) bool {
+			return tag.Get(tagKey) == tagValue
+		}
+		return o, nil
+	}
+}
+
+func WithStructFieldFilter(typ interface{}, fieldNames []string) MarshalOption {
+	return func(o encOpts) (encOpts, error) {
+		t := reflect.TypeOf(typ)
+		if t == nil || t.Kind() != reflect.Struct {
+			return o, &InvalidFilterOptionError{Str: t.Name() + " must be struct"}
+		}
+		o.structFieldFilterFuncs = append(o.structFieldFilterFuncs, func(v reflect.Value, f field) bool {
+			if v.Type().Name() != t.Name() {
+				return false
+			}
+			for _, fieldName := range fieldNames {
+				if f.name == fieldName {
+					return true
+				}
+			}
+			return false
+		})
+		return o, nil
+	}
+}
+
+type InvalidFilterOptionError struct {
+	Str string
+}
+
+func (e *InvalidFilterOptionError) Error() string {
+	return "json: invalid filter option: " + e.Str
 }
 
 // Marshaler is the interface implemented by types that
@@ -284,7 +338,7 @@ func newEncodeState() *encodeState {
 // can distinguish intentional panics from this package.
 type jsonError struct{ error }
 
-func (e *encodeState) marshal(v any, opts encOpts, opts2 ...Option) (err error) {
+func (e *encodeState) marshal(v any, opts encOpts) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if je, ok := r.(jsonError); ok {
@@ -294,7 +348,7 @@ func (e *encodeState) marshal(v any, opts encOpts, opts2 ...Option) (err error) 
 			}
 		}
 	}()
-	e.reflectValue(reflect.ValueOf(v), opts, opts2...)
+	e.reflectValue(reflect.ValueOf(v), opts)
 	return nil
 }
 
@@ -321,7 +375,7 @@ func isEmptyValue(v reflect.Value) bool {
 	return false
 }
 
-func (e *encodeState) reflectValue(v reflect.Value, opts encOpts, opts2 ...Option) {
+func (e *encodeState) reflectValue(v reflect.Value, opts encOpts) {
 	valueEncoder(v)(e, v, opts)
 }
 
@@ -330,6 +384,12 @@ type encOpts struct {
 	quoted bool
 	// escapeHTML causes '<', '>', and '&' to be escaped in JSON strings.
 	escapeHTML bool
+
+	tagFilterFunc func(tag reflect.StructTag) bool
+
+	structFieldFilterFuncs []func(v reflect.Value, f field) bool
+
+	filterString string
 }
 
 type encoderFunc func(e *encodeState, v reflect.Value, opts encOpts)
@@ -705,7 +765,7 @@ FieldLoop:
 			e.WriteString(f.nameNonEsc)
 		}
 		opts.quoted = f.quoted
-		f.encoder(e, fv, opts)
+		f.encode(e, fv, opts)
 	}
 	if next == '{' {
 		e.WriteString("{}")
@@ -1039,12 +1099,34 @@ type field struct {
 	nameEscHTML string // `"` + HTMLEscape(name) + `":`
 
 	tag       bool
+	structTag reflect.StructTag
+	secret    bool
 	index     []int
 	typ       reflect.Type
 	omitEmpty bool
 	quoted    bool
 
 	encoder encoderFunc
+}
+
+func (f field) encode(e *encodeState, v reflect.Value, opts encOpts) {
+	if opts.tagFilterFunc != nil {
+		if ok := opts.tagFilterFunc(f.structTag); ok {
+			b := appendString(nil, opts.filterString, opts.escapeHTML)
+			e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+			return
+		}
+	}
+
+	for _, fn := range opts.structFieldFilterFuncs {
+		if ok := fn(v, f); ok {
+			b := appendString(nil, opts.filterString, opts.escapeHTML)
+			e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+			return
+		}
+	}
+
+	f.encoder(e, v, opts)
 }
 
 // byIndex sorts field by index sequence.
@@ -1114,6 +1196,7 @@ func typeFields(t reflect.Type) structFields {
 					// Ignore unexported non-embedded fields.
 					continue
 				}
+
 				tag := sf.Tag.Get("json")
 				if tag == "-" {
 					continue
@@ -1154,6 +1237,7 @@ func typeFields(t reflect.Type) structFields {
 					field := field{
 						name:      name,
 						tag:       tagged,
+						structTag: sf.Tag,
 						index:     index,
 						typ:       ft,
 						omitEmpty: opts.Contains("omitempty"),
