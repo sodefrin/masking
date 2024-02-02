@@ -12,7 +12,7 @@ import (
 type Ex1 struct {
 	A string `json:"a"`
 	B string `json:"b"`
-	C string `json:"c"`
+	C string `json:"c" secret:"pii"`
 }
 
 type Ex2 struct {
@@ -32,6 +32,13 @@ func TestMasking(t *testing.T) {
 		t.Error(err)
 	}
 	if want, have := `{"e":{"a":"xxx","b":"xxx","c":"c"}}`, string(ret); want != have {
+		t.Errorf("unexpected marshal: want %v have %v", want, have)
+	}
+	ret, err = json.Marshal(&Ex1{A: "a", B: "b", C: "c"}, json.WithStructFieldFilter(Ex1{}, "a", "b"), json.WithFilterString("xxx"), json.WithTagFilter("secret", "pii"))
+	if err != nil {
+		t.Error(err)
+	}
+	if want, have := `{"a":"xxx","b":"xxx","c":"xxx"}`, string(ret); want != have {
 		t.Errorf("unexpected marshal: want %v have %v", want, have)
 	}
 }

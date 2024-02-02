@@ -218,6 +218,10 @@ func WithStructFieldFilter(typ interface{}, fieldNames ...string) MarshalOption 
 			return o, &InvalidFilterOptionError{Str: t.Name() + " must be struct"}
 		}
 		o.structFieldFilterFuncs = append(o.structFieldFilterFuncs, func(v reflect.Value, f field) bool {
+			if f.parentTyp.Name() != t.Name() {
+				return false
+			}
+
 			for _, fieldName := range fieldNames {
 				if f.name == fieldName {
 					return true
@@ -1100,6 +1104,7 @@ type field struct {
 	secret    bool
 	index     []int
 	typ       reflect.Type
+	parentTyp reflect.Type
 	omitEmpty bool
 	quoted    bool
 
@@ -1110,10 +1115,10 @@ func (f field) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	if opts.tagFilterFunc != nil {
 		if ok := opts.tagFilterFunc(f.structTag); ok {
 			if opts.quoted {
-				b := appendString(nil, v.String(), opts.escapeHTML)
+				b := appendString(nil, opts.filterString, opts.escapeHTML)
 				e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
 			} else {
-				e.Write(appendString(e.AvailableBuffer(), v.String(), opts.escapeHTML))
+				e.Write(appendString(e.AvailableBuffer(), opts.filterString, opts.escapeHTML))
 			}
 			return
 		}
@@ -1122,10 +1127,10 @@ func (f field) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	for _, fn := range opts.structFieldFilterFuncs {
 		if ok := fn(v, f); ok {
 			if opts.quoted {
-				b := appendString(nil, v.String(), opts.escapeHTML)
+				b := appendString(nil, opts.filterString, opts.escapeHTML)
 				e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
 			} else {
-				e.Write(appendString(e.AvailableBuffer(), v.String(), opts.escapeHTML))
+				e.Write(appendString(e.AvailableBuffer(), opts.filterString, opts.escapeHTML))
 			}
 			return
 		}
@@ -1245,6 +1250,7 @@ func typeFields(t reflect.Type) structFields {
 						structTag: sf.Tag,
 						index:     index,
 						typ:       ft,
+						parentTyp: t,
 						omitEmpty: opts.Contains("omitempty"),
 						quoted:    quoted,
 					}
