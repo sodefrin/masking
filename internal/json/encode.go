@@ -211,16 +211,13 @@ func WithTagFilter(tagKey, tagValue string) MarshalOption {
 	}
 }
 
-func WithStructFieldFilter(typ interface{}, fieldNames []string) MarshalOption {
+func WithStructFieldFilter(typ interface{}, fieldNames ...string) MarshalOption {
 	return func(o encOpts) (encOpts, error) {
 		t := reflect.TypeOf(typ)
 		if t == nil || t.Kind() != reflect.Struct {
 			return o, &InvalidFilterOptionError{Str: t.Name() + " must be struct"}
 		}
 		o.structFieldFilterFuncs = append(o.structFieldFilterFuncs, func(v reflect.Value, f field) bool {
-			if v.Type().Name() != t.Name() {
-				return false
-			}
 			for _, fieldName := range fieldNames {
 				if f.name == fieldName {
 					return true
@@ -1112,16 +1109,24 @@ type field struct {
 func (f field) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	if opts.tagFilterFunc != nil {
 		if ok := opts.tagFilterFunc(f.structTag); ok {
-			b := appendString(nil, opts.filterString, opts.escapeHTML)
-			e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+			if opts.quoted {
+				b := appendString(nil, v.String(), opts.escapeHTML)
+				e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+			} else {
+				e.Write(appendString(e.AvailableBuffer(), v.String(), opts.escapeHTML))
+			}
 			return
 		}
 	}
 
 	for _, fn := range opts.structFieldFilterFuncs {
 		if ok := fn(v, f); ok {
-			b := appendString(nil, opts.filterString, opts.escapeHTML)
-			e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+			if opts.quoted {
+				b := appendString(nil, v.String(), opts.escapeHTML)
+				e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+			} else {
+				e.Write(appendString(e.AvailableBuffer(), v.String(), opts.escapeHTML))
+			}
 			return
 		}
 	}
