@@ -155,11 +155,11 @@ import (
 // JSON cannot represent cyclic data structures and Marshal does not
 // handle them. Passing cyclic structures to Marshal will result in
 // an error.
-func Marshal(v any, opts ...Opts) ([]byte, error) {
+func Marshal(v any, opts ...Option) ([]byte, error) {
 	e := newEncodeState()
 	defer encodeStatePool.Put(e)
 
-	err := e.marshal(v, encOpts{escapeHTML: true})
+	err := e.marshal(v, encOpts{escapeHTML: true}, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +167,8 @@ func Marshal(v any, opts ...Opts) ([]byte, error) {
 
 	return buf, nil
 }
+
+type Option func()
 
 // MarshalIndent is like Marshal but applies Indent to format the output.
 // Each JSON element in the output will begin on a new line beginning with prefix
@@ -282,7 +284,7 @@ func newEncodeState() *encodeState {
 // can distinguish intentional panics from this package.
 type jsonError struct{ error }
 
-func (e *encodeState) marshal(v any, opts encOpts) (err error) {
+func (e *encodeState) marshal(v any, opts encOpts, opts2 ...Option) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if je, ok := r.(jsonError); ok {
@@ -292,7 +294,7 @@ func (e *encodeState) marshal(v any, opts encOpts) (err error) {
 			}
 		}
 	}()
-	e.reflectValue(reflect.ValueOf(v), opts)
+	e.reflectValue(reflect.ValueOf(v), opts, opts2...)
 	return nil
 }
 
@@ -319,7 +321,7 @@ func isEmptyValue(v reflect.Value) bool {
 	return false
 }
 
-func (e *encodeState) reflectValue(v reflect.Value, opts encOpts) {
+func (e *encodeState) reflectValue(v reflect.Value, opts encOpts, opts2 ...Option) {
 	valueEncoder(v)(e, v, opts)
 }
 
