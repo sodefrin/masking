@@ -54,7 +54,7 @@ func TestJSON(t *testing.T) {
 	}
 	logger := slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{ReplaceAttr: replace}))
 	go func() {
-		logger.Info("test", masking.JSON("example", &Ex2{E: Ex1{A: "a", B: "b", C: "c"}}, masking.IgnoreFields(Ex1{}, "a", "b"), masking.SetMaskedString("xxx")))
+		logger.Info("test", masking.JSON("example", &Ex2{E: Ex1{A: "a", B: "b", C: "c"}}, masking.WithFieldsFilter(Ex1{}, "a", "b"), masking.SetMaskedString("xxx")))
 		w.Close()
 	}()
 

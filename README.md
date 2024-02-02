@@ -14,7 +14,7 @@ logger.Info(
 	"test",
 	masking.JSON(
 		"json", Ex1{A: "a", B: "b", C: "c"},
-		masking.IgnoreFields(Ex1{}, "a", "b"),
+		masking.WithFieldsFilter(Ex1{}, "a", "b"),
 		masking.WithTagFilter("secret", "pii"),
 		masking.SetMaskedString("xxx"),
 	),

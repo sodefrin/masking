@@ -8,7 +8,7 @@ import (
 
 type Option json.MarshalOption
 
-func IgnoreFields(typ any, fields ...string) Option {
+func WithFieldsFilter(typ any, fields ...string) Option {
 	return Option(json.WithStructFieldFilter(typ, fields...))
 }
 
